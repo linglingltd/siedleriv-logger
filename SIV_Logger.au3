@@ -1,10 +1,13 @@
 #Region ;**** Directives created by AutoIt3Wrapper_GUI ****
 #AutoIt3Wrapper_UseX64=n
+#AutoIt3Wrapper_Res_Language=3079
 #EndRegion ;**** Directives created by AutoIt3Wrapper_GUI ****
 #cs ----------------------------------------------------------------------------
 
  AutoIt Version: 3.3.14.5
- Author:         Alex 'Monoxid' W., Kevin 'DJDeagle' M.
+ Author:
+	Alex 'Monoxid' W.
+	Kevin 'DJDeagle' M.
 
  Licence:
    The Settlers IV-Logger (c) by Alex 'Monoxid' W. and Kevin 'DJDeagle' M.
@@ -19,6 +22,13 @@
 	Loggt Werte definiert in einer CSV aus einer laufenden Die Siedler IV Partie
 	in ein CSV File
 
+ Licence: (https://creativecommons.org/licenses/by-nc-sa/4.0/)
+	This code has ben released under the CC-BY-SA licence.
+
+ Website: https://www.elektronikundco.de/
+
+ Git: https://www.github.com/linglingltd/siedleriv-logger
+
  Changelog:
 	V2: Mehrere Spieler können mit einem Prozess geloggt werden
 		Logging startet automatisch bei Partiestart und stoppt bei Partieende (Erkennung über GameTicks)
@@ -32,103 +42,148 @@
 	V3: Daten aus RAM direkt in ein Array holen für mehr Performance
 		Headerbereich im Output mit Spieleranzahl und Spielernamen
 
+	V4: Spielerfarbe, Team, Rasse und Teilnahmestatus können nun ausgelesen werden
+		Anpassung der Benutzeroberfläche
+
 #ce ----------------------------------------------------------------------------
 
-#include <GUIConstants.au3>
-#include <GUIConstantsEx.au3>
+#include <Array.au3>
+#include <ColorConstants.au3>
+#include <Date.au3>
 #include <File.au3>
 #include <FileConstants.au3>
-#include <Array.au3>
+#include <FontConstants.au3>
+#include <GUIConstants.au3>
+#include <GUIConstantsEx.au3>
+#include <ProcessConstants.au3>
+#include <TrayConstants.au3>
 #include <WinAPIProc.au3>
 #include <WinAPIMem.au3>
 #include <WinAPIHObj.au3>
 #include <WinAPIError.au3>
-#include <ProcessConstants.au3>
 #include <WindowsConstants.au3>
-#include <Date.au3>
-#include <TrayConstants.au3>
 
 Opt('MustDeclareVars', 1)
-Opt("GUIOnEventMode", 1)
+Opt("GUIOnEventMode",  1)
 
-; Konfiguration
-Global $iLogInterval = 5000
-Global $bUseRealtime = False	; PC Zeit statt Spielzeit verwenden
-Global $sFileIn = "list.csv"
-Global $sFileOut = "logs/statlog_" & @UserName & "_%NOW%.csv"
+; Konfiguration laden
+Global $iLogInterval = Int(IniRead("settings.ini", "Logger", "LogInterval", "5000"))
+Global $sFileIn = IniRead("settings.ini", "Input", "File", "list.csv")
+Global $sFileOut = IniRead("settings.ini", "Output", "File", "logs/sivlog%NOW%.csv")
+Global $sSeparator = IniRead("settings.ini", "Output", "Separator", ";")							; Trennzeichen für Outputdatei
+Global $bShowRace = Int(IniRead("settings.ini", "General", "ShowRace", "0")) ? True : False			; Rassen im Logger anzeigen oder nicht (Spoiler)
 
-Global $__VERSION = "3"
+Global $__VERSION = "4"
 
 Global $__iProcessID = -1, $__hProcess = Null
 Global $__pPlayerBase[8] = [Null,Null,Null,Null,Null,Null,Null,Null], $__pThreadBaseAddress = Null, $__pTickAddress = Null
 Global $__fHnd = Null, $__aOffsetList
 
-Global $__aCheckbox[8], $__Edit1, $__Label4, $__ListView, $__ListViewItems[3]
+Global $__aPlayerLabel[8], $__Edit1, $__Label1, $__Label2, $__Label3, $__Label4, $__Label5, $__Label6, $__Label7, $__ListView, $__ListViewItems[3]
 
 Global $__bLoggingEnabled = True, $__bMatchInitialized = False
 Global $__iLineCounter = 0
 
-; Programmcode
-Main()
+Global $aPlayerAlive[8] = [True, True, True, True, True, True, True, True]
 
+; Hauptfunktion, erzeugt grafische Oberfläche und prüft auf Spielparameter
 Func Main()
-	GetOffsetData()
+	If Not GetOffsetData() Then Return
 
-	Local $hWinMain = GUICreate("SIV Logger " & $__VERSION, 352, 385)
+	Local $hWinMain = GUICreate("SIV Logger " & $__VERSION, 362, 460)
+	GUISetFont(Default, Default, Default, "Consolas")
+
+	$__Label1 = GUICtrlCreateLabel("Spielerinformationen:", 8, 8, 346, 20)
+	GUICtrlSetFont(-1, 11, $FW_SEMIBOLD)
+
+	$__Label2 = GUICtrlCreateLabel("Name                              Rasse     Team   Farbe", 8, 25, 442, 16)
+	GUICtrlSetFont(-1, Default, Default, $GUI_FONTUNDER)
 
 	For $i = 0 To 7
-		$__aCheckbox[$i] = GUICtrlCreateCheckbox("Spieler " & $i+1, 8, 25 + 16 * $i, 164, 16)
-		GUICtrlSetState(-1, $GUI_CHECKED)
-		GUICtrlSetFont(-1, Default, Default, Default, "Monospace")
+		$__aPlayerLabel[$i] = GUICtrlCreateLabel("Spieler " & $i+1, 8, 40 + 16 * $i, 442, 16)
+		GUICtrlSetColor(-1, $COLOR_BLACK)
 	Next
 
-	Local $Label1 = GUICtrlCreateLabel("Welche Statistiken sollen geloggt werden?", 8, 8, 336, 15)
-	Local $Label2 = GUICtrlCreateLabel("Logging ist:", 8, 350, 85, 20, $SS_CENTERIMAGE)
-	Local $Label5 = GUICtrlCreateLabel("Spielinformationen:", 8, 165, 164, 15)
-	$__Label4 = GUICtrlCreateLabel("Inaktiv", 100, 350, 85, 20, $SS_CENTERIMAGE)
-	Local $Label6 = GUICtrlCreateLabel("Programminformationen:", 180, 165, 164, 15)
+	$__Label3 = GUICtrlCreateLabel("Spielinformationen:", 8, 175, 346, 20)
+	GUICtrlSetFont(-1, 11, $FW_SEMIBOLD)
 
-	GUICtrlSetFont($Label2, 12, 400)
-	GUICtrlSetFont($__Label4, 14, 400)
-	GUICtrlSetFont($Label5, Default, 600)
-	GUICtrlSetFont($Label6, Default, 600)
+	$__Label4 = GUICtrlCreateLabel("Programminformationen:", 8, 305, 346, 20)
+	GUICtrlSetFont(-1, 11, $FW_SEMIBOLD)
 
-	$__Edit1 = GUICtrlCreateEdit("Suche Spiel...", 180, 185, 164, 150, BitOR($ES_WANTRETURN, $WS_VSCROLL, $ES_AUTOVSCROLL, $ES_READONLY))
+	$__Label5 = GUICtrlCreateLabel("Logging ist:", 8, 430, 120, 20, $SS_CENTERIMAGE)
+	GUICtrlSetFont(-1, 12)
 
-	$__ListView = GUICtrlCreateListView("        Name|        Wert", 8, 185, 164, 150)
-	$__ListViewItems[0] = GUICtrlCreateListViewItem("Karte|", $__ListView)
+	$__Label6 = GUICtrlCreateLabel("Inaktiv", 120, 430, 85, 20, $SS_CENTERIMAGE)
+	GUICtrlSetFont(-1, 14)
+
+	$__Label7 = GUICtrlCreateLabel("www.elektronikundco.de", 220, 440, 135, 15)
+	GUICtrlSetFont(-1, Default, Default, $GUI_FONTUNDER)
+	GUICtrlSetColor(-1, $COLOR_BLUE)
+
+	$__Edit1 = GUICtrlCreateEdit("Warte auf Spielstart", 8, 325, 346, 100, BitOR($ES_WANTRETURN, $WS_VSCROLL, $ES_AUTOVSCROLL, $ES_READONLY))
+
+	$__ListView = GUICtrlCreateListView("Name                          |Wert                          ", 8, 195, 346, 100)
+
+	$__ListViewItems[0] = GUICtrlCreateListViewItem("Karte|",		  $__ListView)
 	$__ListViewItems[1] = GUICtrlCreateListViewItem("Spieleranzahl|", $__ListView)
-	$__ListViewItems[2] = GUICtrlCreateListViewItem("Spielzeit|", $__ListView)
+	$__ListViewItems[2] = GUICtrlCreateListViewItem("Spielzeit|",	  $__ListView)
 
 	GUISetOnEvent($GUI_EVENT_CLOSE, "CloseButton")
+	GUICtrlSetOnEvent($__Label7, "OpenLink")
 	GUISetState(@SW_SHOW)
 
 	Local $bMatchRunningInfo = False
 	Local $hLogTimerHandle = TimerInit()
 
 	While 1
+		; Prozess öffnen
 		If $__hProcess == Null Then
 			If OpenProcess() Then
-				GUICtrlSetData($__Edit1, GUICtrlRead($__Edit1) & @CRLF & "Spiel gefunden" & @CRLF & "Warte auf Partiestart")
+				GUICtrlSetData($__Edit1, GUICtrlRead($__Edit1) & @CRLF & "Spiel gestartet" & @CRLF & "Warte auf Partiestart")
 			EndIf
 		Else
+			; Das Spiel wurde beendet
 			If Not ProcessExists($__iProcessID) Then
 				DisableLogging()
 				LogFileClose()
 				CloseProcess()
 				GUICtrlSetData($__Edit1, GUICtrlRead($__Edit1) & @CRLF & "Spiel beendet")
 			Else
+				; Es läuft bereits eine Partie
 				If IsMatchRunning() Then
 					GUICtrlSetData($__ListViewItems[2], "Spielzeit|" & GetElapsedGameTime())
 
+					; Die Partie einmalig im Logger initialisieren
 					If Not $__bMatchInitialized Then
 						$__bMatchInitialized = True
 
 						GUICtrlSetData($__Edit1, GUICtrlRead($__Edit1) & @CRLF & "Partie gestartet")
 
-						For $i = 1 To GetPlayerCount()
-							GUICtrlSetData($__aCheckbox[$i-1], GetPlayerName($i))
+						; Header für Debug Output
+						ConsoleWrite("Name                              Rasse     Team   Farbe" & @CRLF)
+						Local $iPlayerCount = GetPlayerCount()
+
+						For $i = 1 To $iPlayerCount
+							Local $sPlayerString = StringFormat("%-32s  %-8s  %-4s   %-6s", GetPlayerName($i), ($bShowRace ? GetRaceName(GetPlayerRace($i)) : "-"), GetTeamString(GetPlayerTeam($i)), GetColorName(GetPlayerColor($i)))
+							GUICtrlSetData($__aPlayerLabel[$i-1], $sPlayerString)
+
+							; Farbe der Spieler einstellen - ist tw. unlesbar, daher inaktiv
+							;GUICtrlSetColor($__aPlayerLabel[$i-1], Dec(GetPlayerColor($i)))
+
+							; Teilnahmestatus zurücksetzen
+							$aPlayerAlive[$i-1] = True
+
+							; Debug Output für alle Spieler
+							ConsoleWrite($sPlayerString & @CRLF)
 						Next
+
+						; Alle unbelegten Spielerplätze ausblenden
+						If $iPlayerCount < 8 Then
+							For $i = ($iPlayerCount + 1) To 8
+								GUICtrlSetData($__aPlayerLabel[$i-1], "")
+								$aPlayerAlive[$i-1] = False
+							Next
+						EndIf
 
 						GUICtrlSetData($__ListViewItems[0], "Karte|" & GetMapName())
 						GUICtrlSetData($__ListViewItems[1], "Spieleranzahl|" & GetPlayerCount())
@@ -138,11 +193,47 @@ Func Main()
 						EnableLogging()
 					EndIf
 
+
+					; Mitspielstatus prüfen
+					Local $iPlayerCount = GetPlayerCount()
+					For $i = 1 To $iPlayerCount
+						If $aPlayerAlive[$i-1] = True And Not IsPlayerAlive($i) Then
+							$aPlayerAlive[$i-1] = False
+							GUICtrlSetColor($__aPlayerLabel[$i-1], $COLOR_GRAY)
+							;GUICtrlSetFont($__aPlayerLabel[$i-1], Default, Default, $GUI_FONTSTRIKE)
+							GUICtrlSetData($__Edit1, GUICtrlRead($__Edit1) & @CRLF & GetPlayerName($i) & " ist ausgeschieden")
+
+							; Sieg überprüfen
+							Local $iTeamWin = -1
+							For $j = 1 To $iPlayerCount
+								If IsPlayerAlive($j) Then
+									Local $iTeam = GetPlayerTeam($j)
+									If $iTeamWin = -1 Or $iTeamWin = $iTeam Then
+										; Mögliches Gewinnerteam ablegen
+										$iTeamWin = $iTeam
+									Else
+										; Es gibt noch keinen Gewinner
+										$iTeamWin = -1
+										ExitLoop
+									EndIf
+								EndIf
+							Next
+
+							If $iTeamWin <> -1 Then
+								GUICtrlSetData($__Edit1, GUICtrlRead($__Edit1) & @CRLF & "Team " & GetTeamString($iTeamWin) & " hat gewonnen!")
+							EndIf
+						EndIf
+					Next
+
+					; Daten loggen
 					If $__bLoggingEnabled AND TimerDiff($hLogTimerHandle) > $iLogInterval Then
 						$hLogTimerHandle = TimerInit()
 						LogData()
 					EndIf
+
+				; Es läuft keine Partie
 				Else
+					; Es war eine Partie initialisiert, daher ist sie nun beendet
 					If $__bMatchInitialized = True Then
 						$__bMatchInitialized = False
 
@@ -156,7 +247,9 @@ Func Main()
 						LogFileClose()
 
 						For $i = 1 To 8
-							GUICtrlSetData($__aCheckbox[$i-1], "Spieler " & $i)
+							GUICtrlSetData($__aPlayerLabel[$i-1], "Spieler " & $i)
+							GUICtrlSetColor($__aPlayerLabel[$i-1], $COLOR_BLACK)
+							GUICtrlSetFont($__aPlayerLabel[$i-1], Default, Default, $GUI_FONTNORMAL)
 						Next
 					EndIf
 				EndIf
@@ -167,6 +260,7 @@ Func Main()
 	WEnd
 EndFunc
 
+; Öffnet den Siedler IV Prozess
 Func OpenProcess()
 	Local $iProcessID = WinGetProcess("Die Siedler IV")
 	If $iProcessID == -1 Then Return SetError(1, 0, False)
@@ -185,11 +279,13 @@ Func OpenProcess()
 	Return True
 EndFunc
 
+; Schließt den Siedler IV Handle
 Func CloseProcess()
 	_WinAPI_CloseHandle($__hProcess)
 	$__hProcess = Null
 EndFunc
 
+; Gibt die verstrichenen Ticks im Spiel zurück
 Func GetTicks()
 	Static Local $pTicksAddress = $__pThreadBaseAddress + Ptr("0xE66B14")
 	Static Local $tMode = DllStructCreate("int")
@@ -201,7 +297,7 @@ Func GetTicks()
 	Return DllStructGetData($tMode, 1)
 EndFunc
 
-
+; Gibt den Kartennamen aus dem Spiel zurück - Funktioniert nicht bei Szenario oder speziellen Mapdateien!
 Func GetMapName()
 	Local $tMode = DllStructCreate("ptr;wchar[32]")
 	Local $pPointer = $__pThreadBaseAddress + Ptr("0x109C0DC")
@@ -219,7 +315,146 @@ Func GetMapName()
 	Return $sMapname
 EndFunc
 
+; Gibt das Team des Spielers als Zahl zurück
+Func GetPlayerTeam($iPlayer)
+	Local $tMode = DllStructCreate("ptr;int")
+	Local $pPointer = $__pThreadBaseAddress + Ptr("0xFE748")
+	Local $sPlayername, $iBytesRead = 0
 
+	Local $bSuccess = _WinAPI_ReadProcessMemory($__hProcess, $pPointer, DllStructGetPtr($tMode, 1), 4, $iBytesRead)
+	If Not $bSuccess Then Return SetError(1, _WinAPI_GetLastError() & " :: " & _WinAPI_GetLastErrorMessage(), False)
+
+	$pPointer = DllStructGetData($tMode, 1) + Ptr(4 * ($iPlayer-1))
+
+	$bSuccess = _WinAPI_ReadProcessMemory($__hProcess, $pPointer, DllStructGetPtr($tMode, 2), 4, $iBytesRead)
+	If Not $bSuccess Then Return SetError(2, _WinAPI_GetLastError() & " :: " & _WinAPI_GetLastErrorMessage(), False)
+
+	Local $iPlayerTeam = Int(DllStructGetData($tMode, 2))
+	Return $iPlayerTeam
+EndFunc
+
+; Formatiert einen Teamwert in eine römische Zahl
+Func GetTeamString($iTeam)
+	Local $sTeamStrings = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII"]
+	Return $sTeamStrings[$iTeam-1]
+EndFunc
+
+; Prüft, ob ein Spieler noch aktiv an der Partie teilnimmt
+Func IsPlayerAlive($iPlayer)
+	Local $tMode = DllStructCreate("ptr;int")
+	Local $pPointer = $__pThreadBaseAddress + Ptr("0xF86E8")
+	Local $sPlayername, $iBytesRead = 0
+
+	Local $bSuccess = _WinAPI_ReadProcessMemory($__hProcess, $pPointer, DllStructGetPtr($tMode, 1), 4, $iBytesRead)
+	If Not $bSuccess Then Return SetError(1, _WinAPI_GetLastError() & " :: " & _WinAPI_GetLastErrorMessage(), False)
+
+	$pPointer = DllStructGetData($tMode, 1) + 52 + Ptr(60 * ($iPlayer-1))
+
+	$bSuccess = _WinAPI_ReadProcessMemory($__hProcess, $pPointer, DllStructGetPtr($tMode, 2), 4, $iBytesRead)
+	If Not $bSuccess Then Return SetError(2, _WinAPI_GetLastError() & " :: " & _WinAPI_GetLastErrorMessage(), False)
+
+	Local $iPlayerAlive = Int(DllStructGetData($tMode, 2))
+	If $iPlayerAlive == 1 Then
+		Return True
+	Else
+		Return False
+	EndIf
+EndFunc
+
+; Gibt die gespielte Rasse eines Spielers zurück
+Func GetPlayerRace($iPlayer)
+	Local $tMode = DllStructCreate("ptr;int")
+	Local $pPointer = $__pThreadBaseAddress + Ptr("0xF86E8")
+	Local $sPlayername, $iBytesRead = 0
+
+	Local $bSuccess = _WinAPI_ReadProcessMemory($__hProcess, $pPointer, DllStructGetPtr($tMode, 1), 4, $iBytesRead)
+	If Not $bSuccess Then Return SetError(1, _WinAPI_GetLastError() & " :: " & _WinAPI_GetLastErrorMessage(), False)
+
+	$pPointer = DllStructGetData($tMode, 1) + Ptr(60 * ($iPlayer-1))
+
+	$bSuccess = _WinAPI_ReadProcessMemory($__hProcess, $pPointer, DllStructGetPtr($tMode, 2), 4, $iBytesRead)
+	If Not $bSuccess Then Return SetError(2, _WinAPI_GetLastError() & " :: " & _WinAPI_GetLastErrorMessage(), False)
+
+	Local $iPlayerRace = Int(DllStructGetData($tMode, 2))
+	Return $iPlayerRace
+EndFunc
+
+; Gibt einen Namen zu einem Rassenwert zurück
+Func GetRaceName($iRace)
+	Switch $iRace
+		Case 0
+			Return "Römer"
+		Case 1
+			Return "Wikinger"
+		Case 2
+			Return "Maya"
+		Case 3
+			Return "Dunkles Volk?"	; Nicht überprüft
+		Case 4
+			Return "Trojaner"
+		Case Else
+			Return "Lemminge"		; Fehlerfall
+	EndSwitch
+EndFunc
+
+; Gibt die Spielerfarbe als HEXcode (RRGGBB) zurück
+Func GetPlayerColor($iPlayer)
+	Local $tMode = DllStructCreate("ptr;int;int;int")
+	Local $pPointer = $__pThreadBaseAddress + Ptr("0xFE748")
+	Local $iColorOffset = -128
+	Local $sPlayername, $iBytesRead = 0
+
+	Local $bSuccess = _WinAPI_ReadProcessMemory($__hProcess, $pPointer, DllStructGetPtr($tMode, 1), 4, $iBytesRead)
+	If Not $bSuccess Then Return SetError(1, _WinAPI_GetLastError() & " :: " & _WinAPI_GetLastErrorMessage(), False)
+
+	$pPointer = DllStructGetData($tMode, 1) + $iColorOffset + Ptr(12 * ($iPlayer-1))
+
+	$bSuccess = _WinAPI_ReadProcessMemory($__hProcess, $pPointer + 0, DllStructGetPtr($tMode, 2), 4, $iBytesRead)
+	If Not $bSuccess Then Return SetError(2, _WinAPI_GetLastError() & " :: " & _WinAPI_GetLastErrorMessage(), False)
+
+	$bSuccess = _WinAPI_ReadProcessMemory($__hProcess, $pPointer + 4, DllStructGetPtr($tMode, 3), 4, $iBytesRead)
+	If Not $bSuccess Then Return SetError(2, _WinAPI_GetLastError() & " :: " & _WinAPI_GetLastErrorMessage(), False)
+
+	$bSuccess = _WinAPI_ReadProcessMemory($__hProcess, $pPointer + 8, DllStructGetPtr($tMode, 4), 4, $iBytesRead)
+	If Not $bSuccess Then Return SetError(2, _WinAPI_GetLastError() & " :: " & _WinAPI_GetLastErrorMessage(), False)
+
+	Local $iPlayerColorRed		= Int(DllStructGetData($tMode, 2))
+	Local $sPlayerColorGreen	= Int(DllStructGetData($tMode, 3))
+	Local $sPlayerColorBlue		= Int(DllStructGetData($tMode, 4))
+
+	Local $sHexValue = Hex(BitOR(BitShift($iPlayerColorRed, -16), BitShift($sPlayerColorGreen, -8), $sPlayerColorBlue), 6)
+	Return $sHexValue
+EndFunc
+
+; Gibt den Farbnamen zu einem HEXcode einer Farbe zurück
+Func GetColorName($iColorCode)
+	Local $aColorNames = ["Rot", "Blau", "Grün", "Gelb", "Lila", "Orange", "Cyan", "Weiß"]
+
+	Switch $iColorCode
+		Case "F01515" ; Rot
+			Return $aColorNames[0]
+		Case "453ED2" ; Blau
+			Return $aColorNames[1]
+		Case "00C836" ; Grün
+			Return $aColorNames[2]
+		Case "FAEE00" ; Gelb
+			Return $aColorNames[3]
+		Case "BE4BFF" ; Lila
+			Return $aColorNames[4]
+		Case "FDA024" ; Orange
+			Return $aColorNames[5]
+		Case "21C5B5" ; Cyan
+			Return $aColorNames[6]
+		Case "E6FFFF" ; Weiß
+			Return $aColorNames[7]
+		Case Else ; Fehler in der Matrix
+			Return "Unbekannt"
+	EndSwitch
+
+	Return $aColorNames[$iColorCode]
+EndFunc
+
+; Gibt den Spielernamen zurück
 Func GetPlayerName($iPlayer)
 	Local $tMode = DllStructCreate("ptr;wchar[32]")
 	Local $pPointer = $__pThreadBaseAddress + Ptr("0x109B628") + Ptr(0x3C * ($iPlayer-1))
@@ -237,6 +472,7 @@ Func GetPlayerName($iPlayer)
 	Return $sPlayername
 EndFunc
 
+; Gibt die Anzahl der an der Partie teilnehmenden Spieler (inkl. KI) zurück
 Func GetPlayerCount()
 	Local $pPlayerCountAddress = $__pThreadBaseAddress + Ptr("0xE94828")
 	Local $tMode = DllStructCreate("int")
@@ -248,6 +484,7 @@ Func GetPlayerCount()
 	Return DllStructGetData($tMode, 1)
 EndFunc
 
+; Gibt die Nummer des eigenen Spielers zurück
 Func GetCurrentPlayer()
 	Local $pPlayerAddress = $__pThreadBaseAddress + Ptr("0xE9482C")
 	Local $tMode = DllStructCreate("int")
@@ -259,6 +496,7 @@ Func GetCurrentPlayer()
 	Return DllStructGetData($tMode, 1)
 EndFunc
 
+; Gibt die verstrichene Spielzeit zurück
 Func GetElapsedGameTime()
 	Local $iTicks = GetTicks()
 	If @error Then Return SetError(1, 0, False)
@@ -275,7 +513,7 @@ Func GetElapsedGameTime()
 	Return $sFormattedString
 EndFunc
 
-
+; Gibt die Basisadresse des S4_Main Threads zurück
 Func GetThreadBaseAddress($hProcess, $iProcessID)
 	If Not ProcessExists($iProcessID) Then Return SetError(1, 0, False)
 
@@ -289,7 +527,7 @@ Func GetThreadBaseAddress($hProcess, $iProcessID)
 	Return True
 EndFunc
 
-
+; Berechnet die Basisadressen aller Spieler
 Func GetPlayerBaseAddresses($hProcess, $iProcessID)
 	If Not ProcessExists($iProcessID) Then Return SetError(1, 0, False)
 
@@ -352,11 +590,13 @@ Func _MemoryModuleGetBaseAddress($iPID, $sModule)
 
 EndFunc
 
+; Gibt den aktuellen Partiestatus zurück
 Func IsMatchRunning()
 	If GetTicks() > 0 Then Return True
 	Return False
 EndFunc
 
+; Gibt Spieldaten von gegebenem Spieler an gegebenem Offset zurück
 Func GetPlayerData($iPlayer, $iOffset)
 	If $__pPlayerBase[$iPlayer-1] = Null Then Return SetError(1, 0, False)
 
@@ -371,6 +611,7 @@ Func GetPlayerData($iPlayer, $iOffset)
 	Return DllStructGetData($tMode, 1)
 EndFunc
 
+; Holt einen Großteil der Spielerdaten aus dem RAM
 Func GetPlayerDataEx($iPlayer, ByRef $aData)
 	Const $iValues = 1049
 	If $__pPlayerBase[$iPlayer-1] = Null Then Return SetError(1, 0, False)
@@ -388,49 +629,57 @@ Func GetPlayerDataEx($iPlayer, ByRef $aData)
 	Next
 EndFunc
 
+; Liest die Offsetdaten aus dem Inputfile in ein Array ein
 Func GetOffsetData()
+	If Not FileExists($sFileIn) Then
+		MsgBox(BitOR($MB_ICONERROR, $MB_ICONERROR), "SIV Logger " & $__VERSION, "Fehler!" & @CRLF & "Datei '" & $sFileIn & "' wurde nicht gefunden.")
+		Return False
+	EndIf
+
 	_FileReadToArray($sFileIn, $__aOffsetList, $FRTA_COUNT, @TAB)
+	Return True
 EndFunc
 
+; Öffnet ein Logfile und schreibt die Kopfdaten
 Func LogFileOpen()
 	$__iLineCounter = 0
 
-	Local $sNow = _Now()
-	$sNow = StringReplace($sNow, "/", "-")
-	$sNow = StringReplace($sNow, "\", "-")
-	$sNow = StringReplace($sNow, ".", "-")
-	$sNow = StringReplace($sNow, ":", "-")
-	$sNow = StringReplace($sNow, " ", "_")
+	Local $sNow = @YEAR & "-" & @MON & "-" & @MDAY & "_" & @HOUR & "-" & @MIN
 
 	Local $sFileName = StringReplace($sFileOut, "%NOW%", $sNow)
+	$sFileName = StringReplace($sFileName, "%USERNAME%", @UserName)
 
-	$__fHnd = FileOpen($sFileName, $FO_APPEND)
+	$__fHnd = FileOpen($sFileName, BitOR($FO_APPEND,  $FO_CREATEPATH))
 
-	; Header mit Spieleranzahl und Spielernamen
+	; Kopfdaten mit Kartenname und Spieleranzahl
 	Local $iPlayerCount = GetPlayerCount()
-	Local $sHeader = GetMapName() & @TAB & String($iPlayerCount) & @TAB
-
-	For $i = 1 To $iPlayerCount
-		$sHeader = $sHeader & GetPlayerName($i) & @TAB
-	Next
-
+	Local $sHeader = GetMapName() & $sSeparator & String($iPlayerCount)
 	FileWriteLine($__fHnd, $sHeader)
 
-	; Headline mit Bezeichnungen der Datenzeilen
-	Local $sHeadline = "Zeitstempel" & @TAB & "Zähler" & @TAB & "Spieler" & @TAB
+	; Spielernamen
+	Local $sLine = ""
+	For $i = 1 To $iPlayerCount
+		$sLine = GetPlayerName($i) & $sSeparator & GetRaceName(GetPlayerRace($i)) & $sSeparator & GetPlayerColor($i) & $sSeparator & GetPlayerTeam($i)
+		FileWriteLine($__fHnd, $sLine)
+	Next
+
+	; Überschrift mit Bezeichnungen der Datenzeilen
+	Local $sHeadline = "Zeitstempel" & $sSeparator & "Zähler" & $sSeparator & "Spieler" & $sSeparator & "Aktiv" & $sSeparator
 
 	For $i = 1 To $__aOffsetList[0][0]
-		$sHeadline = $sHeadline & $__aOffsetList[$i][2] & " - " & $__aOffsetList[$i][1] & @TAB
+		$sHeadline = $sHeadline & $__aOffsetList[$i][2] & " - " & $__aOffsetList[$i][1] & $sSeparator
 	Next
 
 	FileWriteLine($__fHnd, $sHeadline)
 EndFunc
 
+; Schließt die Logdatei
 Func LogFileClose()
 	FileClose($__fHnd)
 	$__fHnd = Null
 EndFunc
 
+; Loggt aktuelle Spieldaten
 Func LogData()
 	If $__fHnd = Null Then Return False
 
@@ -439,33 +688,34 @@ Func LogData()
 	Local $aPlayerData[0]
 
 	For $iPlayer = 1 To $iPlayerCount ; Könnte buggy sein, falls ein Spieler aussteigt und sich dieser Wert ändert
-		If GUICtrlRead($__aCheckbox[$iPlayer-1]) = $GUI_CHECKED Then
-			$__iLineCounter = $__iLineCounter + 1
-			$sNewLine = ($bUseRealtime ? _Now() : GetElapsedGameTime()) & @TAB & $__iLineCounter & @TAB & $iPlayer & @TAB
+		$__iLineCounter = $__iLineCounter + 1
+		$sNewLine = GetElapsedGameTime() & $sSeparator & _
+		$__iLineCounter & $sSeparator & _
+		$iPlayer & $sSeparator & _
+		(IsPlayerAlive($iPlayer) ? "1" : "0") & $sSeparator
 
-			#cs
-			; Alte Funktion holt die Daten einzeln, ist okay aber nicht sehr performant
-			For $i = 1 To $__aOffsetList[0][0]
-				$sNewLine = $sNewLine & GetPlayerData($iPlayer, $__aOffsetList[$i][0]) & @TAB
-			Next
-			#ce
+		#cs
+		; Alte Funktion holt die Daten einzeln, ist okay aber nicht sehr performant
+		For $i = 1 To $__aOffsetList[0][0]
+			$sNewLine = $sNewLine & GetPlayerData($iPlayer, $__aOffsetList[$i][0]) & @TAB
+		Next
+		#ce
 
-			; Neue Funktion holt alle Daten auf einmal in ein Array
-			GetPlayerDataEx($iPlayer, $aPlayerData)
-			For $i = 1 To $__aOffsetList[0][0]
-				$sNewLine = $sNewLine & $aPlayerData[$__aOffsetList[$i][0] / 4] & @TAB
-			Next
+		; Neue Funktion holt alle Daten auf einmal in ein Array
+		GetPlayerDataEx($iPlayer, $aPlayerData)
+		For $i = 1 To $__aOffsetList[0][0]
+			$sNewLine = $sNewLine & $aPlayerData[$__aOffsetList[$i][0] / 4] & $sSeparator
+		Next
 
-			; Letztes Trennzeichen entfernen
-			$sNewLine = StringTrimRight($sNewLine, 1)
+		; Letztes Trennzeichen entfernen
+		$sNewLine = StringTrimRight($sNewLine, StringLen($sSeparator))
 
-			;ConsoleWrite($sNewLine & @CRLF)
-			FileWriteLine($__fHnd, $sNewLine)
-		EndIf
+		;ConsoleWrite($sNewLine & @CRLF)
+		FileWriteLine($__fHnd, $sNewLine)
 	Next
 EndFunc
 
-
+; Logging ein/ausschalten
 Func ToggleLogging()
 	If $__bLoggingEnabled Then
 		DisableLogging()
@@ -474,31 +724,31 @@ Func ToggleLogging()
 	EndIf
 EndFunc
 
+; Logging aktivieren
 Func EnableLogging()
 	$__bLoggingEnabled = True
-	GUICtrlSetData($__Label4, "Aktiv")
-
-	For $i = 0 To 7
-		GUICtrlSetStyle($__aCheckbox[$i], BitOR($BS_AUTOCHECKBOX, $WS_DISABLED))
-	Next
-
-	;TrayTip("Siedler IV Statlogger", "Logging aktiviert", 10, $TIP_ICONASTERISK)
+	GUICtrlSetData($__Label6, "Aktiv")
 EndFunc
 
+; Logging deaktivieren
 Func DisableLogging()
 	$__bLoggingEnabled = False
 	FileFlush($__fHnd)
-	GUICtrlSetData($__Label4, "Inaktiv")
-
-	For $i = 0 To 7
-		GUICtrlSetStyle($__aCheckbox[$i], $BS_AUTOCHECKBOX)
-	Next
-
-	;TrayTip("Siedler IV Statlogger", "Logging deaktiviert", 10, $TIP_ICONASTERISK)
+	GUICtrlSetData($__Label6, "Inaktiv")
 EndFunc
 
+; Öffnet den Link zu einer sehr tollen Internetseite
+Func OpenLink()
+	ShellExecute("https://www.elektronikundco.de/")
+EndFunc
+
+; Gibt alle Ressourcen frei und beendet das Programm
 Func CloseButton()
 	LogFileClose()
 	CloseProcess()
 	Exit 0
 EndFunc
+
+
+; Programm starten
+Main()
