@@ -1,0 +1,239 @@
+0	Aktuell	Siedler
+4	Aktuell	Planierer
+8	Aktuell	Bauarbeiter
+112	Aktuell	Schwertkämpfer Level 1
+116	Aktuell	Schwertkämpfer Level 2
+120	Aktuell	Schwertkämpfer Level 3
+124	Aktuell	Bogenschütze Level 1
+128	Aktuell	Bogenschütze Level 2
+132	Aktuell	Bogenschütze Level 3
+136	Aktuell	Sanitäter Level 1
+140	Aktuell	Sanitäter Level 2
+144	Aktuell	Sanitäter Level 3
+148	Aktuell	Axtkämpfer Level 1
+152	Aktuell	Axtkämpfer Level 2
+156	Aktuell	Axtkämpfer Level 3
+160	Aktuell	Blasrohrschütze Level 1
+164	Aktuell	Blasrohrschütze Level 2
+168	Aktuell	Blasrohrschütze Level 3
+172	Aktuell	Hauptmann
+176	Aktuell	Priester
+180	Aktuell	Saboteur
+184	Aktuell	Pioniere
+188	Aktuell	Dieb
+192	Aktuell	Geologe
+240	Aktuell	Rucksackkatapultist Level 1
+244	Aktuell	Rucksackkatapultist Level 2
+248	Aktuell	Rucksackkatapultist Level 3
+384	Insgesamt	Schwertkämpfer Level 1
+388	Insgesamt	Schwertkämpfer Level 2
+392	Insgesamt	Schwertkämpfer Level 3
+396	Insgesamt	Bogenschütze Level 1
+400	Insgesamt	Bogenschütze Level 2
+404	Insgesamt	Bogenschütze Level 3
+408	Insgesamt	Sanitäter Level 1
+412	Insgesamt	Sanitäter Level 2
+416	Insgesamt	Sanitäter Level 3
+420	Insgesamt	Axtkämpfer Level 1
+424	Insgesamt	Axtkämpfer Level 2
+428	Insgesamt	Axtkämpfer Level 3
+432	Insgesamt	Blasrohrschütze Level 1
+436	Insgesamt	Blasrohrschütze Level 2
+440	Insgesamt	Blasrohrschütze Level 3
+444	Insgesamt	Hauptmann
+448	Insgesamt	Priester
+452	Insgesamt	Saboteur
+456	Insgesamt	Pioniere
+460	Insgesamt	Dieb
+464	Insgesamt	Geologe
+512	Insgesamt	Rucksackkatapultist Level 1
+516	Insgesamt	Rucksackkatapultist Level 2
+520	Insgesamt	Rucksackkatapultist Level 3
+552	Aktuell	Holzfällerhütte
+556	Aktuell	Förster
+560	Aktuell	Sägewerk
+564	Aktuell	Steinmetz
+568	Aktuell	Wasserwerk
+572	Aktuell	Fischerhütte
+576	Aktuell	Jagdhütte
+580	Aktuell	Metzgerei
+584	Aktuell	Mühle
+588	Aktuell	Bäckerei
+592	Aktuell	Getreidefarm
+596	Aktuell	Schafzucht
+600	Aktuell	Eselzucht
+604	Aktuell	Steinmine
+608	Aktuell	Eisenerzmine
+612	Aktuell	Goldmine
+616	Aktuell	Kohlemine
+620	Aktuell	Schwefelmine
+624	Aktuell	Goldschmelze
+628	Aktuell	Eisenschmelze
+632	Aktuell	Werkzeugschmiede
+636	Aktuell	Waffenschmiede
+640	Aktuell	Fahrzeugmanufaktur
+644	Aktuell	Kaserne
+648	Aktuell	Köhlerei
+656	Aktuell	Lazarett
+660	Aktuell	Munitionsmanufaktur / Pulverhaus / Pfeilmanufaktur
+672	Aktuell	Hafen
+676	Aktuell	Werft
+680	Aktuell	Marktplatz
+684	Aktuell	Lager
+688	Aktuell	Weingut
+692	Aktuell	Agavenfarm
+696	Aktuell	Tequiladestille
+700	Aktuell	Imkerei
+704	Aktuell	Honigwinzerei
+708	Aktuell	Kleines Wohnhaus
+712	Aktuell	Mittleres Wohnhaus
+716	Aktuell	Großes Wohnhaus
+720	Aktuell	Kleiner Tempel
+724	Aktuell	Großer Tempel
+728	Aktuell	Aussichtsturm
+732	Aktuell	Kleiner Turm
+736	Aktuell	Mittlerer Turm
+740	Aktuell	Burg
+1064		Eroberte Kleine Türme
+1068		Eroberte Mittlere Türme
+1072		Eroberte Burg
+1396		Verlorene Kleine Türme (Eroberung)
+1400		Verlorene Mittlere Türme (Eroberung)
+1404		Verlorene Burg (Eroberung)
+1544	Aktuell	Gebaute Gebäude
+1880	Insgesamt	Gebaute Gebäude
+2564	Aktuell	Agaven
+2568	Aktuell	Munition
+2572	Aktuell	Rüstungen
+2576	Aktuell	Äxte
+2580	Aktuell	Streitaxt
+2584	Aktuell	Blasrohre
+2588	Aktuell	Bretter
+2592	Aktuell	Bögen
+2596	Aktuell	Brot
+2600	Aktuell	Kohle
+2604	Aktuell	Fisch
+2608	Aktuell	Mehl
+2612	Aktuell	Ziegen
+2616	Aktuell	Gold
+2620	Aktuell	Golderz
+2624	Aktuell	Getreide
+2628	Aktuell	Schießpulver
+2632	Aktuell	Hammer
+2636	Aktuell	Honig
+2640	Aktuell	Eisen
+2644	Aktuell	Eisenerz
+2648	Aktuell	Baumstämme
+2652	Aktuell	Met
+2656	Aktuell	Fleisch
+2660	Aktuell	Spitzhacken
+2664	Aktuell	Schweine
+2668	Aktuell	Angeln
+2672	Aktuell	Sägen
+2676	Aktuell	Sensen
+2680	Aktuell	Schafe
+2684	Aktuell	Schaufeln
+2688	Aktuell	Steine
+2692	Aktuell	Schwefel
+2696	Aktuell	Schwerter
+2700	Aktuell	Tequila
+2704	Aktuell	Wasser
+2708	Aktuell	Wein
+2712	Aktuell	Rucksackkatapult
+2716	Aktuell	Gänse
+2720	Aktuell	Explosivpfeile
+2724	Aktuell	Sonnenblumenöl
+2728	Aktuell	Sonneblumen
+2732	Aktuell	Summe Ressourcen
+2740	Insgesamt	Agaven
+2744	Insgesamt	Munition
+2748	Insgesamt	Rüstungen
+2752	Insgesamt	Äxte
+2756	Insgesamt	Streitaxt
+2760	Insgesamt	Blasrohre
+2764	Insgesamt	Bretter
+2768	Insgesamt	Bögen
+2772	Insgesamt	Brot
+2776	Insgesamt	Kohle
+2780	Insgesamt	Fisch
+2784	Insgesamt	Mehl
+2788	Insgesamt	Ziegen
+2792	Insgesamt	Gold
+2796	Insgesamt	Golderz
+2800	Insgesamt	Getreide
+2804	Insgesamt	Schießpulver
+2808	Insgesamt	Hammer
+2812	Insgesamt	Honig
+2816	Insgesamt	Eisen
+2820	Insgesamt	Eisenerz
+2824	Insgesamt	Baumstämme
+2828	Insgesamt	Met
+2832	Insgesamt	Fleisch
+2836	Insgesamt	Spitzhacken
+2840	Insgesamt	Schweine
+2844	Insgesamt	Angeln
+2848	Insgesamt	Sägen
+2852	Insgesamt	Sensen
+2856	Insgesamt	Schafe
+2860	Insgesamt	Schaufeln
+2864	Insgesamt	Steine
+2868	Insgesamt	Schwefel
+2872	Insgesamt	Schwerter
+2876	Insgesamt	Tequila
+2880	Insgesamt	Wasser
+2884	Insgesamt	Wein
+2888	Insgesamt	Rucksackkatapult
+2892	Insgesamt	Gänse
+2896	Insgesamt	Explosivpfeile
+2900	Insgesamt	Sonnenblumenöl
+2904	Insgesamt	Sonneblumen
+2908	Insgesamt	Summe Ressourcen
+2968	Aktuell	Kontrolliertes Land in %
+3000	Aktuell	Verteidigungskraft (Wert/256)
+3004	Aktuell	Angriffsskraft (Wert/256)
+3212	Besiegte	Schwertkämpfer Level 1
+3216	Besiegte	Schwertkämpfer Level 2
+3220	Besiegte	Schwertkämpfer Level 3
+3224	Besiegte	Bogenschütze Level 1
+3228	Besiegte	Bogenschütze Level 2
+3232	Besiegte	Bogenschütze Level 3
+3236	Besiegte	Sanitäter Level 1
+3240	Besiegte	Sanitäter Level 2
+3244	Besiegte	Sanitäter Level 3
+3248	Besiegte	Axtkämpfer Level 1
+3252	Besiegte	Axtkämpfer Level 2
+3256	Besiegte	Axtkämpfer Level 3
+3260	Besiegte	Blasrohrschütze Level 1
+3264	Besiegte	Blasrohrschütze Level 2
+3268	Besiegte	Blasrohrschütze Level 3
+3272	Besiegte	Hauptmann
+3276	Besiegte	Priester
+3280	Besiegte	Saboteur
+3284	Besiegte	Pioniere
+3288	Besiegte	Dieb
+3292	Besiegte	Geologe
+3364	Besiegte	Einheiten gesamt
+3484	Verlorene	Schwertkämpfer Level 1
+3488	Verlorene	Schwertkämpfer Level 2
+3492	Verlorene	Schwertkämpfer Level 3
+3496	Verlorene	Bogenschütze Level 1
+3500	Verlorene	Bogenschütze Level 2
+3504	Verlorene	Bogenschütze Level 3
+3508	Verlorene	Sanitäter Level 1
+3512	Verlorene	Sanitäter Level 2
+3516	Verlorene	Sanitäter Level 3
+3520	Verlorene	Axtkämpfer Level 1
+3524	Verlorene	Axtkämpfer Level 2
+3528	Verlorene	Axtkämpfer Level 3
+3532	Verlorene	Blasrohrschütze Level 1
+3536	Verlorene	Blasrohrschütze Level 2
+3540	Verlorene	Blasrohrschütze Level 3
+3544	Verlorene	Hauptmann
+3548	Verlorene	Priester
+3552	Verlorene	Saboteur
+3556	Verlorene	Pioniere
+3560	Verlorene	Dieb
+3564	Verlorene	Geologe
+3636	Verlorene	Einheiten gesamt
+4188	Aktuell	Mana
+4192	Insgesamt	Mana
