@@ -29,6 +29,9 @@
 		MustDeclareVars aktiviert, um undefiniertes Verhalten bei Variablen zu vermeiden
 		Neues GUI mit Statusanzeige, Kartenname, Spieleranzahl, Spielernamen und verstrichener Zeit
 
+	V3: Daten aus RAM direkt in ein Array holen für mehr Performance
+		Headerbereich im Output mit Spieleranzahl und Spielernamen
+
 #ce ----------------------------------------------------------------------------
 
 #include <GUIConstants.au3>
@@ -54,7 +57,7 @@ Global $bUseRealtime = False	; PC Zeit statt Spielzeit verwenden
 Global $sFileIn = "list.csv"
 Global $sFileOut = "logs/statlog_" & @UserName & "_%NOW%.csv"
 
-Global $__VERSION = "2"
+Global $__VERSION = "3"
 
 Global $__iProcessID = -1, $__hProcess = Null
 Global $__pPlayerBase[8] = [Null,Null,Null,Null,Null,Null,Null,Null], $__pThreadBaseAddress = Null, $__pTickAddress = Null
@@ -93,7 +96,7 @@ Func Main()
 	$__Edit1 = GUICtrlCreateEdit("Suche Spiel...", 180, 185, 164, 150, BitOR($ES_WANTRETURN, $WS_VSCROLL, $ES_AUTOVSCROLL, $ES_READONLY))
 
 	$__ListView = GUICtrlCreateListView("        Name|        Wert", 8, 185, 164, 150)
-	;$__ListViewItems[0] = GUICtrlCreateListViewItem("Karte|", $__ListView)
+	$__ListViewItems[0] = GUICtrlCreateListViewItem("Karte|", $__ListView)
 	$__ListViewItems[1] = GUICtrlCreateListViewItem("Spieleranzahl|", $__ListView)
 	$__ListViewItems[2] = GUICtrlCreateListViewItem("Spielzeit|", $__ListView)
 
@@ -123,16 +126,16 @@ Func Main()
 
 						GUICtrlSetData($__Edit1, GUICtrlRead($__Edit1) & @CRLF & "Partie gestartet")
 
-						LogFileOpen()
-						EnableLogging()
-
 						For $i = 1 To GetPlayerCount()
 							GUICtrlSetData($__aCheckbox[$i-1], GetPlayerName($i))
 						Next
 
-						;GUICtrlSetData($__ListViewItems[0], "Karte|" & GetMapName())
+						GUICtrlSetData($__ListViewItems[0], "Karte|" & GetMapName())
 						GUICtrlSetData($__ListViewItems[1], "Spieleranzahl|" & GetPlayerCount())
 						GUICtrlSetData($__ListViewItems[2], "Spielzeit|" & GetElapsedGameTime())
+
+						LogFileOpen()
+						EnableLogging()
 					EndIf
 
 					If $__bLoggingEnabled AND TimerDiff($hLogTimerHandle) > $iLogInterval Then
@@ -145,7 +148,7 @@ Func Main()
 
 						GUICtrlSetData($__Edit1, GUICtrlRead($__Edit1) & @CRLF & "Partie beendet")
 
-						;GUICtrlSetData($__ListViewItems[0], "Karte|")
+						GUICtrlSetData($__ListViewItems[0], "Karte|")
 						GUICtrlSetData($__ListViewItems[1], "Spieleranzahl|")
 						GUICtrlSetData($__ListViewItems[2], "Spielzeit|")
 
@@ -197,6 +200,7 @@ Func GetTicks()
 
 	Return DllStructGetData($tMode, 1)
 EndFunc
+
 
 Func GetMapName()
 	Local $tMode = DllStructCreate("ptr;wchar[32]")
@@ -367,6 +371,23 @@ Func GetPlayerData($iPlayer, $iOffset)
 	Return DllStructGetData($tMode, 1)
 EndFunc
 
+Func GetPlayerDataEx($iPlayer, ByRef $aData)
+	Const $iValues = 1049
+	If $__pPlayerBase[$iPlayer-1] = Null Then Return SetError(1, 0, False)
+
+	Local $tMode = DllStructCreate("int[" & $iValues & "]")
+	Local $pMode = DllStructGetPtr($tMode, 1)
+
+	Local $iBytesRead = 0
+	Local $bSuccess = _WinAPI_ReadProcessMemory($__hProcess, $__pPlayerBase[$iPlayer-1], $pMode, $iValues*4, $iBytesRead)
+	If Not $bSuccess Then Return SetError(2, _WinAPI_GetLastError() & "::" & _WinAPI_GetLastErrorMessage(), False)
+
+	ReDim $aData[$iValues]
+	For $i = 1 To $iValues
+		$aData[$i-1] = DllStructGetData($tMode, 1, $i)
+	Next
+EndFunc
+
 Func GetOffsetData()
 	_FileReadToArray($sFileIn, $__aOffsetList, $FRTA_COUNT, @TAB)
 EndFunc
@@ -384,13 +405,25 @@ Func LogFileOpen()
 	Local $sFileName = StringReplace($sFileOut, "%NOW%", $sNow)
 
 	$__fHnd = FileOpen($sFileName, $FO_APPEND)
-	Local $sFirstLine = "Zeitstempel" & @TAB & "Zähler" & @TAB & "Spieler" & @TAB
 
-	For $i = 1 To $__aOffsetList[0][0]
-		$sFirstLine = $sFirstLine & $__aOffsetList[$i][2] & " - " & $__aOffsetList[$i][1] & @TAB
+	; Header mit Spieleranzahl und Spielernamen
+	Local $iPlayerCount = GetPlayerCount()
+	Local $sHeader = GetMapName() & @TAB & String($iPlayerCount) & @TAB
+
+	For $i = 1 To $iPlayerCount
+		$sHeader = $sHeader & GetPlayerName($i) & @TAB
 	Next
 
-	FileWriteLine($__fHnd, $sFirstLine)
+	FileWriteLine($__fHnd, $sHeader)
+
+	; Headline mit Bezeichnungen der Datenzeilen
+	Local $sHeadline = "Zeitstempel" & @TAB & "Zähler" & @TAB & "Spieler" & @TAB
+
+	For $i = 1 To $__aOffsetList[0][0]
+		$sHeadline = $sHeadline & $__aOffsetList[$i][2] & " - " & $__aOffsetList[$i][1] & @TAB
+	Next
+
+	FileWriteLine($__fHnd, $sHeadline)
 EndFunc
 
 Func LogFileClose()
@@ -403,13 +436,24 @@ Func LogData()
 
 	Local $sNewLine
 	Local $iPlayerCount = GetPlayerCount()
+	Local $aPlayerData[0]
 
 	For $iPlayer = 1 To $iPlayerCount ; Könnte buggy sein, falls ein Spieler aussteigt und sich dieser Wert ändert
 		If GUICtrlRead($__aCheckbox[$iPlayer-1]) = $GUI_CHECKED Then
 			$__iLineCounter = $__iLineCounter + 1
 			$sNewLine = ($bUseRealtime ? _Now() : GetElapsedGameTime()) & @TAB & $__iLineCounter & @TAB & $iPlayer & @TAB
+
+			#cs
+			; Alte Funktion holt die Daten einzeln, ist okay aber nicht sehr performant
 			For $i = 1 To $__aOffsetList[0][0]
 				$sNewLine = $sNewLine & GetPlayerData($iPlayer, $__aOffsetList[$i][0]) & @TAB
+			Next
+			#ce
+
+			; Neue Funktion holt alle Daten auf einmal in ein Array
+			GetPlayerDataEx($iPlayer, $aPlayerData)
+			For $i = 1 To $__aOffsetList[0][0]
+				$sNewLine = $sNewLine & $aPlayerData[$__aOffsetList[$i][0] / 4] & @TAB
 			Next
 
 			; Letztes Trennzeichen entfernen

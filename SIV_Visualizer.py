@@ -1,10 +1,12 @@
 import csv
+import datetime
 import numpy as np
 import matplotlib.pyplot as plt
 import math
 import sys
+from matplotlib.ticker import StrMethodFormatter
 
-#plt.style.use('dark_background')
+# plt.style.use('dark_background')
 
 csv.register_dialect('siv', delimiter='\t', quoting=csv.QUOTE_NONE)
 
@@ -13,45 +15,58 @@ n = 0
 # Irgendwas mit Plot
 if(len(sys.argv) < 2):
     print("NONONONONONONO! Chose file!!");
-    datas = ["statlog_kevin_11-12-2020_18-09-31.csv"]
+    exit()
 else:
-    datas = [sys.argv[1]];
+    data = sys.argv[1];
 
-plots = [3,113,138]
+plots = [3,217,["Militärgebäude Aktuell", [96,97,98]],["Krieger Aktuell", [6,7,8,9,10,11,12,13,14,15,16,17,18,19,20]],["Nahrung Aktuell", [115,117,130]],["Nahrung Gesamt", [158,160,173]]]
 
 fig, ax = plt.subplots(len(plots))
-fig.set_size_inches(8, len(plots)*2+1)
+fig.set_size_inches(8, len(plots)*2.5+1)
 
 plt.ylabel("")
 plt.xlabel("")
 
-i = 0
-for data in datas:
-    with open(data, encoding="utf8") as f:
-        reader = csv.reader(f, 'siv')
-        contents = list(reader)
-    arr = np.array(contents[1:-1])
-    numplayers = int(max(arr[1:,2]))
-    for player in range(1,numplayers+1):  # Create plot for every player we want to know
-        arrn = np.array(contents[player:-1:numplayers])
-        for p in range(len(plots)):  # Plot each plot we want to know about
-            ax[p].plot(np.float_(arrn[:,1])/12/numplayers, np.float_(arrn[:,plots[p]]), label="Player " + str(player))
-    i += 1
+#plt.ylim(-60, 0)
+with open(data, encoding="utf8") as f:
+    reader = csv.reader(f, 'siv')
+    contents = list(reader)
+arr = np.array(contents[2:])
+numplayers = int(max(arr[1:,2]))
+playerNames = np.array(contents[0])
+numPlayers = int(playerNames[1])
+mapName = playerNames[0]
 
-i = 0
+for line in range(0, len(arr)):
+    arr[line][1] = (datetime.datetime.strptime(arr[line][0], "%H:%M:%S") - datetime.datetime(1900, 1, 1)).total_seconds()/60
+maxTime = math.ceil(float(arr[-1,1]))
+
+for player in range(1,numPlayers+1):  # Create plot for every player we want to know
+    arrn = np.array(arr[player-1::numPlayers])
+    for p in range(len(plots)):  # Plot each plot we want to know about
+        if isinstance(plots[p], list):
+            val = np.float_(arrn[:,plots[p][1][0]])
+            for el in range(1, len(plots[p][1])):
+                val += np.float_(arrn[:,plots[p][1][el]])
+            ax[p].plot(np.float_(arrn[:,1]), val, label=playerNames[player+1])
+        else:
+            ax[p].plot(np.float_(arrn[:,1]), np.float_(arrn[:,plots[p]]), label=playerNames[player+1])
+
 depth = len(contents)-3
-print(depth)
-for i in range(len(contents[0])-1):
-    # if(arr[depth][i] != arr[0][i]):  # only show if there are changes to see
-    print(str(i) + "\t" + contents[0][i])
 
 for p in range(len(plots)):
-    ax[p].set_ylabel(contents[0][plots[p]].replace(" - ", "\n"))
+    if isinstance(plots[p], list):
+        ax[p].set_ylabel(plots[p][0])
+    else:
+        ax[p].set_ylabel(contents[1][plots[p]].replace(" - ", "\n"))
     ax[p].legend(loc="upper left");
-    ax[p].grid(color='gray', linestyle="--")
+    ax[p].set_xlim(0, maxTime)
+    ax[p].xaxis.set_major_formatter(StrMethodFormatter('{x:,.0f}'))
+    ax[p].yaxis.set_major_formatter(StrMethodFormatter('{x:,.0f}'))
+    ax[p].grid(linestyle="--", color="darkgray")
 
-    
+ax[0].set_title(mapName + " (" + arr[-1,0] + "h)")
 plt.tight_layout(pad=0.5)
 # Plot anzeigen
-plt.savefig(datas[0].replace(".csv", ".png"), dpi=150)
+plt.savefig(data.replace(".csv", ".png"), dpi=150)
 # plt.show()
