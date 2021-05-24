@@ -91,6 +91,8 @@ for player in range(0,numPlayers):  # Create plot for every player we want to kn
         graph = 0
         if y > 1:
             graph = ax[graphx][graphy]
+        elif y == 1 and x == 1:
+            graph = ax
         else:
             graph = ax[graphx]
         if isinstance(plots[p], list):
@@ -107,6 +109,8 @@ for p in range(len(plots)):
     graph = 0
     if y > 1:
         graph = ax[graphx][graphy]
+    elif y == 1 and x == 1:
+        graph = ax
     else:
         graph = ax[graphx]
 
@@ -145,6 +149,8 @@ for el in arr:
 
 if y > 1:
     ax[0][0].set_title(heading)
+elif y == 1 and x == 1:
+    ax.set_title(heading)
 else:
     ax[0].set_title(heading)
     
