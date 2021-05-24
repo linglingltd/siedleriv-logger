@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import math
 import sys
 
-plt.style.use('dark_background')
+#plt.style.use('dark_background')
 
 csv.register_dialect('siv', delimiter='\t', quoting=csv.QUOTE_NONE)
 
