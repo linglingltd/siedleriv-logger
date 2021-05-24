@@ -94,12 +94,12 @@
 732	Aktuell	Kleiner Turm
 736	Aktuell	Mittlerer Turm
 740	Aktuell	Burg
-1064		Eroberte Kleine Türme
-1068		Eroberte Mittlere Türme
-1072		Eroberte Burg
-1396		Verlorene Kleine Türme (Eroberung)
-1400		Verlorene Mittlere Türme (Eroberung)
-1404		Verlorene Burg (Eroberung)
+1064	Eroberte	Kleine Türme
+1068	Eroberte	Mittlere Türme
+1072	Eroberte	Burg
+1396	Verlorene	Kleine Türme (Eroberung)
+1400	Verlorene	Mittlere Türme (Eroberung)
+1404	Verlorene	Burg (Eroberung)
 1544	Aktuell	Gebaute Gebäude
 1880	Insgesamt	Gebaute Gebäude
 2564	Aktuell	Agaven
