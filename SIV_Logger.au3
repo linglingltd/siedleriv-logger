@@ -19,13 +19,19 @@
 	Loggt Werte definiert in einer CSV aus einer laufenden Die Siedler IV Partie
 	in ein CSV File
 
+ Changelog:
+	V2: Mehrere Spieler können mit einem Prozess geloggt werden
+		Logging startet automatisch bei Partiestart und stoppt bei Partieende (Erkennung über GameTicks)
+		Standardmäßig wird im Log nun die verstrichene Spielzeit verwendet statt der aktuellen PC-Zeit
+		Neue Spalte in den Logfiles: Spieler
+		Funktionen zur Berechnung der Pointer besser strukturiert und aufgetrennt in sinnvolle Teilfunktionen
+		Basisoffset geändert, damit alle Datenoffsets positive Werte haben (Siehe Anpassung in .csv Inputfile)
+		MustDeclareVars aktiviert, um undefiniertes Verhalten bei Variablen zu vermeiden
+		Neues GUI mit Statusanzeige, Kartenname, Spieleranzahl, Spielernamen und verstrichener Zeit
+
 #ce ----------------------------------------------------------------------------
 
-; Kevins gute Idee für saubere Daten:		:-)
-; Loggen Start möglich aber erst wenn Siedler <> 0 dann Logdaten schreiben	-- Start der Partie abfangen
-; Sobald dann Siedler = 0 Log stoppen und keinen Eintrag mehr schreiben		-- Ende der Partie abfangen
-
-
+#include <GUIConstants.au3>
 #include <GUIConstantsEx.au3>
 #include <File.au3>
 #include <FileConstants.au3>
@@ -39,170 +45,274 @@
 #include <Date.au3>
 #include <TrayConstants.au3>
 
-$sNow = _Now()
-$sNow = StringReplace($sNow, "/", "-")
-$sNow = StringReplace($sNow, "\", "-")
-$sNow = StringReplace($sNow, ".", "-")
-$sNow = StringReplace($sNow, ":", "-")
-$sNow = StringReplace($sNow, " ", "_")
-
-; Konfiguration
-$sFileIn = "list.csv"
-$sFileOut = "logs/statlog_" & @UserName & "_" & $sNow & ".csv"
-$iDelay = 5000
-
-; Programmcode
+Opt('MustDeclareVars', 1)
 Opt("GUIOnEventMode", 1)
 
-$iPID = WinGetProcess("Die Siedler IV")
-If $iPID == -1 Then Exit 10
+; Konfiguration
+Global $iLogInterval = 5000
+Global $bUseRealtime = False	; PC Zeit statt Spielzeit verwenden
+Global $sFileIn = "list.csv"
+Global $sFileOut = "logs/statlog_" & @UserName & "_%NOW%.csv"
 
-$bLoggingEnabled = False
+Global $__VERSION = "2"
 
-Global $iPlayerOffset = Number(InputBox("Siedler IV - Statlogger", "Welcher Spieler soll geloggt werden?", "1"))
-If @error Or $iPlayerOffset < 1 Or $iPlayerOffset > 8 Then
-	MsgBox(0, "", "Du doof! Gibt doch nur Spieler 1-8...")
-	Exit 1
-EndIf
+Global $__iProcessID = -1, $__hProcess = Null
+Global $__pPlayerBase[8] = [Null,Null,Null,Null,Null,Null,Null,Null], $__pThreadBaseAddress = Null, $__pTickAddress = Null
+Global $__fHnd = Null, $__aOffsetList
 
-; Korrekten Offset berechnen
-$iPlayerOffset = ($iPlayerOffset-1) * 4392
+Global $__aCheckbox[8], $__Edit1, $__Label4, $__ListView, $__ListViewItems[3]
 
-Local $__tMode = DllStructCreate("ptr;ptr;int")
-$__pBuf = DllStructGetPtr($__tMode, 3)
+Global $__bLoggingEnabled = True, $__bMatchInitialized = False
+Global $__iLineCounter = 0
 
-$pBaseAddress =_MemoryModuleGetBaseAddress($iPID, "S4_Main.exe")
+; Programmcode
+Main()
 
-; Static Pointer auf die aktuelle Turmanzahl von Spieler 1
-$hOffset = "0x000F8ED4"
-$iBaseOffset = 196
+Func Main()
+	GetOffsetData()
 
-ConsoleWrite("Basisadresse: " & $pBaseAddress & @CRLF)
-ConsoleWrite("Basisoffset: " & $hOffset & @CRLF)
+	Local $hWinMain = GUICreate("SIV Logger " & $__VERSION, 352, 385)
 
-Global $__hProcess = _WinAPI_OpenProcess($PROCESS_VM_READ, 0, $iPID, True)
-If @error Then ErrorFunc(1)
+	For $i = 0 To 7
+		$__aCheckbox[$i] = GUICtrlCreateCheckbox("Spieler " & $i+1, 8, 25 + 16 * $i, 164, 16)
+		GUICtrlSetState(-1, $GUI_CHECKED)
+		GUICtrlSetFont(-1, Default, Default, Default, "Monospace")
+	Next
 
-; Basisadresse berechnen
-$pStartingPointer = $pBaseAddress+$hOffset
-DllStructSetData($__tMode, 1, $pStartingPointer)
+	Local $Label1 = GUICtrlCreateLabel("Welche Statistiken sollen geloggt werden?", 8, 8, 336, 15)
+	Local $Label2 = GUICtrlCreateLabel("Logging ist:", 8, 350, 85, 20, $SS_CENTERIMAGE)
+	Local $Label5 = GUICtrlCreateLabel("Spielinformationen:", 8, 165, 164, 15)
+	$__Label4 = GUICtrlCreateLabel("Inaktiv", 100, 350, 85, 20, $SS_CENTERIMAGE)
+	Local $Label6 = GUICtrlCreateLabel("Programminformationen:", 180, 165, 164, 15)
 
-ConsoleWrite("Round 1: GET: " & DllStructGetData($__tMode, 1) & " = ")
+	GUICtrlSetFont($Label2, 12, 400)
+	GUICtrlSetFont($__Label4, 14, 400)
+	GUICtrlSetFont($Label5, Default, 600)
+	GUICtrlSetFont($Label6, Default, 600)
 
-$iBytesRead = 0
-$bSuccess = _WinAPI_ReadProcessMemory($__hProcess, DLLStructGetData($__tMode, 1), DLLStructGetPtr($__tMode, 2), 4, $iBytesRead)
-If Not $bSuccess Then ErrorFunc(3)
+	$__Edit1 = GUICtrlCreateEdit("Suche Spiel...", 180, 185, 164, 150, BitOR($ES_WANTRETURN, $WS_VSCROLL, $ES_AUTOVSCROLL, $ES_READONLY))
 
-ConsoleWrite(DllStructGetData($__tMode, 2) & @CRLF)
-$pBaseAddress = DllStructGetData($__tMode, 2)
+	$__ListView = GUICtrlCreateListView("        Name|        Wert", 8, 185, 164, 150)
+	;$__ListViewItems[0] = GUICtrlCreateListViewItem("Karte|", $__ListView)
+	$__ListViewItems[1] = GUICtrlCreateListViewItem("Spieleranzahl|", $__ListView)
+	$__ListViewItems[2] = GUICtrlCreateListViewItem("Spielzeit|", $__ListView)
 
+	GUISetOnEvent($GUI_EVENT_CLOSE, "CloseButton")
+	GUISetState(@SW_SHOW)
 
-Dim $aOffsetList
-_FileReadToArray($sFileIn, $aOffsetList, $FRTA_COUNT, @TAB)
+	Local $bMatchRunningInfo = False
+	Local $hLogTimerHandle = TimerInit()
 
-$fHndStatOut = FileOpen($sFileOut, $FO_APPEND)
-$sFirstLine = "Zeitstempel" & @TAB & "Zähler" & @TAB
-For $i = 1 To $aOffsetList[0][0]
-	$sFirstLine = $sFirstLine & $aOffsetList[$i][2] & " - " & $aOffsetList[$i][1] & @TAB
-Next
-FileWriteLine($fHndStatOut, $sFirstLine)
-$iCounter = 0
+	While 1
+		If $__hProcess == Null Then
+			If OpenProcess() Then
+				GUICtrlSetData($__Edit1, GUICtrlRead($__Edit1) & @CRLF & "Spiel gefunden" & @CRLF & "Warte auf Partiestart")
+			EndIf
+		Else
+			If Not ProcessExists($__iProcessID) Then
+				DisableLogging()
+				LogFileClose()
+				CloseProcess()
+				GUICtrlSetData($__Edit1, GUICtrlRead($__Edit1) & @CRLF & "Spiel beendet")
+			Else
+				If IsMatchRunning() Then
+					GUICtrlSetData($__ListViewItems[2], "Spielzeit|" & GetElapsedGameTime())
 
-$hGUI = GUICreate("Siedler IV - Statlogger by KEVLEX", 200, 60, Default, Default, BitOR($GUI_SS_DEFAULT_GUI, $WS_SIZEBOX))
-GUISetOnEvent($GUI_EVENT_CLOSE, "CLOSEButton")
+					If Not $__bMatchInitialized Then
+						$__bMatchInitialized = True
 
-$idStart = GUICtrlCreateButton("Start", 10, 10, 85, 40)
-GUICtrlSetFont(-1, 16, 500)
-GUICtrlSetOnEvent(-1, "ToggleLogging")
+						GUICtrlSetData($__Edit1, GUICtrlRead($__Edit1) & @CRLF & "Partie gestartet")
 
-$idStop = GUICtrlCreateButton("Stop", 105, 10, 85, 40)
-GUICtrlSetFont(-1, 16, 500)
-GUICtrlSetState(-1, $GUI_DISABLE)
-GUICtrlSetOnEvent(-1, "ToggleLogging")
+						LogFileOpen()
+						EnableLogging()
 
-GUISetState(@SW_SHOW, $hGUI)
+						For $i = 1 To GetPlayerCount()
+							GUICtrlSetData($__aCheckbox[$i-1], GetPlayerName($i))
+						Next
 
-HotKeySet("{PAUSE}", "ToggleLogging")
+						;GUICtrlSetData($__ListViewItems[0], "Karte|" & GetMapName())
+						GUICtrlSetData($__ListViewItems[1], "Spieleranzahl|" & GetPlayerCount())
+						GUICtrlSetData($__ListViewItems[2], "Spielzeit|" & GetElapsedGameTime())
+					EndIf
 
-While 1
-	If Not ProcessExists($iPID) Then CLOSEButton()
+					If $__bLoggingEnabled AND TimerDiff($hLogTimerHandle) > $iLogInterval Then
+						$hLogTimerHandle = TimerInit()
+						LogData()
+					EndIf
+				Else
+					If $__bMatchInitialized = True Then
+						$__bMatchInitialized = False
 
-	If $bLoggingEnabled Then
-		$iCounter = $iCounter + 1
-		$sNewLine = _Now() & @TAB & $iCounter & @TAB
+						GUICtrlSetData($__Edit1, GUICtrlRead($__Edit1) & @CRLF & "Partie beendet")
 
-		For $i = 1 To $aOffsetList[0][0]
-			$iValue = GetData($pBaseAddress, $aOffsetList[$i][0], $iBaseOffset, $iPlayerOffset)
-			$sNewLine = $sNewLine & $iValue & @TAB
-		Next
+						;GUICtrlSetData($__ListViewItems[0], "Karte|")
+						GUICtrlSetData($__ListViewItems[1], "Spieleranzahl|")
+						GUICtrlSetData($__ListViewItems[2], "Spielzeit|")
 
-		; Letztes Trennzeichen entfernen
-		$sNewLine = StringTrimRight($sNewLine, 1)
+						DisableLogging()
+						LogFileClose()
 
-		;ConsoleWrite($sNewLine & @CRLF)
-		FileWriteLine($fHndStatOut, $sNewLine)
-	EndIf
+						For $i = 1 To 8
+							GUICtrlSetData($__aCheckbox[$i-1], "Spieler " & $i)
+						Next
+					EndIf
+				EndIf
+			EndIf
+		EndIf
 
-	Sleep($iDelay)
-WEnd
+		Sleep(500)
+	WEnd
+EndFunc
 
+Func OpenProcess()
+	Local $iProcessID = WinGetProcess("Die Siedler IV")
+	If $iProcessID == -1 Then Return SetError(1, 0, False)
 
-Func ErrorFunc($iVal)
-	$iLastError = _WinAPI_GetLastError()
-	$sLastError = _WinAPI_GetLastErrorMessage()
+	Local $hProcess = _WinAPI_OpenProcess($PROCESS_VM_READ, 0, $iProcessID, True)
+	If @error Then Return SetError(2, 0, False)
 
-	MsgBox(0, $iVal & ":" & $iLastError, $sLastError)
+	GetThreadBaseAddress($hProcess, $iProcessID)
+	If @error Then Return SetError(3, 0, False)
 
+	GetPlayerBaseAddresses($hProcess, $iProcessID)
+	If @error Then Return SetError(4, 0, False)
+
+	$__iProcessID = $iProcessID
+	$__hProcess = $hProcess
+	Return True
+EndFunc
+
+Func CloseProcess()
 	_WinAPI_CloseHandle($__hProcess)
-
-	Exit 10
+	$__hProcess = Null
 EndFunc
 
-Func CLOSEButton()
-	FileClose($fHndStatOut)
-	GUIDelete($hGUI)
-	_WinAPI_CloseHandle($__hProcess)
-    Exit 0
-EndFunc
+Func GetTicks()
+	Static Local $pTicksAddress = $__pThreadBaseAddress + Ptr("0xE66B14")
+	Static Local $tMode = DllStructCreate("int")
 
-
-Func ToggleLogging()
-	If $bLoggingEnabled Then
-		$bLoggingEnabled = False
-		FileFlush($fHndStatOut)
-		GUICtrlSetState($idStop, $GUI_DISABLE)
-		GUICtrlSetState($idStart, $GUI_ENABLE)
-
-		TrayTip("Siedler IV Statlogger", "Logging deaktiviert", 10, $TIP_ICONASTERISK)
-	Else
-		$bLoggingEnabled = True
-		GUICtrlSetState($idStop, $GUI_ENABLE)
-		GUICtrlSetState($idStart, $GUI_DISABLE)
-
-		TrayTip("Siedler IV Statlogger", "Logging aktiviert", 10, $TIP_ICONASTERISK)
-	EndIf
-EndFunc
-
-Func GetData($_pBaseAddress, $_iOffset, $_iBaseOffset, $_iPlayerOffset)
 	Local $iBytesRead = 0
-	Local $bSuccess = _WinAPI_ReadProcessMemory($__hProcess, $_pBaseAddress+$_iBaseOffset+$_iPlayerOffset+$_iOffset, $__pBuf, 4, $iBytesRead)
-	If Not $bSuccess Then ErrorFunc(3)
+	Local $bSuccess = _WinAPI_ReadProcessMemory($__hProcess, $pTicksAddress, DllStructGetPtr($tMode, 1), 4, $iBytesRead)
+	If Not $bSuccess Then Return SetError(1, _WinAPI_GetLastError() & "::" & _WinAPI_GetLastErrorMessage(), False)
 
-#cs
-	If $_iOffset = 0 Then
-		ConsoleWrite("Calculated address: " & $_pBaseAddress+$_iBaseOffset+$_iOffset & @CRLF)
-		ConsoleWrite("_pBaseAddress: " & $_pBaseAddress & @CRLF)
-		ConsoleWrite("_iBaseOffset: " & $_iBaseOffset & @CRLF)
-		ConsoleWrite("_iOffset: " & $_iOffset & @CRLF)
-	EndIf
-#ce
+	Return DllStructGetData($tMode, 1)
+EndFunc
 
-	Return DllStructGetData($__tMode, 3)
+Func GetMapName()
+	Local $tMode = DllStructCreate("ptr;wchar[32]")
+	Local $pPointer = $__pThreadBaseAddress + Ptr("0x109C0DC")
+	Local $sMapname, $iBytesRead = 0
+
+	Local $bSuccess = _WinAPI_ReadProcessMemory($__hProcess, $pPointer, DllStructGetPtr($tMode, 1), 4, $iBytesRead)
+	If Not $bSuccess Then Return SetError(1, _WinAPI_GetLastError() & " :: " & _WinAPI_GetLastErrorMessage(), False)
+
+	$pPointer = DllStructGetData($tMode, 1)
+
+	$bSuccess = _WinAPI_ReadProcessMemory($__hProcess, $pPointer, DllStructGetPtr($tMode, 2), 32, $iBytesRead)
+	If Not $bSuccess Then Return SetError(2, _WinAPI_GetLastError() & " :: " & _WinAPI_GetLastErrorMessage(), False)
+
+	$sMapname = DllStructGetData($tMode, 2)
+	Return $sMapname
+EndFunc
+
+
+Func GetPlayerName($iPlayer)
+	Local $tMode = DllStructCreate("ptr;wchar[32]")
+	Local $pPointer = $__pThreadBaseAddress + Ptr("0x109B628") + Ptr(0x3C * ($iPlayer-1))
+	Local $sPlayername, $iBytesRead = 0
+
+	Local $bSuccess = _WinAPI_ReadProcessMemory($__hProcess, $pPointer, DllStructGetPtr($tMode, 1), 4, $iBytesRead)
+	If Not $bSuccess Then Return SetError(1, _WinAPI_GetLastError() & " :: " & _WinAPI_GetLastErrorMessage(), False)
+
+	$pPointer = DllStructGetData($tMode, 1)
+
+	$bSuccess = _WinAPI_ReadProcessMemory($__hProcess, $pPointer, DllStructGetPtr($tMode, 2), 32, $iBytesRead)
+	If Not $bSuccess Then Return SetError(2, _WinAPI_GetLastError() & " :: " & _WinAPI_GetLastErrorMessage(), False)
+
+	$sPlayername = DllStructGetData($tMode, 2)
+	Return $sPlayername
+EndFunc
+
+Func GetPlayerCount()
+	Local $pPlayerCountAddress = $__pThreadBaseAddress + Ptr("0xE94828")
+	Local $tMode = DllStructCreate("int")
+
+	Local $iBytesRead = 0
+	Local $bSuccess = _WinAPI_ReadProcessMemory($__hProcess, $pPlayerCountAddress, DllStructGetPtr($tMode, 1), 4, $iBytesRead)
+	If Not $bSuccess Then Return SetError(2, _WinAPI_GetLastError() & " :: " & _WinAPI_GetLastErrorMessage(), False)
+
+	Return DllStructGetData($tMode, 1)
+EndFunc
+
+Func GetCurrentPlayer()
+	Local $pPlayerAddress = $__pThreadBaseAddress + Ptr("0xE9482C")
+	Local $tMode = DllStructCreate("int")
+
+	Local $iBytesRead = 0
+	Local $bSuccess = _WinAPI_ReadProcessMemory($__hProcess, $pPlayerAddress, DllStructGetPtr($tMode, 1), 4, $iBytesRead)
+	If Not $bSuccess Then Return SetError(2, _WinAPI_GetLastError() & " :: " & _WinAPI_GetLastErrorMessage(), False)
+
+	Return DllStructGetData($tMode, 1)
+EndFunc
+
+Func GetElapsedGameTime()
+	Local $iTicks = GetTicks()
+	If @error Then Return SetError(1, 0, False)
+
+	Local $iSeconds, $iMinutes, $iHours, $sFormattedString
+
+	$iSeconds = $iTicks * 0.071	; Null Ahnung warum dieser Wert... aber Kevin hats gecheckt! :-)
+	$iMinutes = Floor($iSeconds / 60)
+	$iHours   = Floor($iMinutes / 60)
+	$iMinutes = Floor(Mod($iMinutes, 60))
+	$iSeconds = Floor(Mod($iSeconds, 60))
+
+	$sFormattedString = StringFormat("%02d:%02d:%02d", $iHours, $iMinutes, $iSeconds)
+	Return $sFormattedString
+EndFunc
+
+
+Func GetThreadBaseAddress($hProcess, $iProcessID)
+	If Not ProcessExists($iProcessID) Then Return SetError(1, 0, False)
+
+	; Basisadresse des Spiels extrahieren
+	Local $pThreadAddress =_MemoryModuleGetBaseAddress($iProcessID, "S4_Main.exe")
+	If @error Then Return SetError(2, 0, False)
+
+	ConsoleWrite("Adresse der S4_Main.exe: " & $pThreadAddress & @CRLF)
+
+	$__pThreadBaseAddress = $pThreadAddress
+	Return True
+EndFunc
+
+
+Func GetPlayerBaseAddresses($hProcess, $iProcessID)
+	If Not ProcessExists($iProcessID) Then Return SetError(1, 0, False)
+
+	Local $tMode = DllStructCreate("ptr")
+	Local Const $hOffset = "0x000F8ED4"
+ 	Local Const $iBaseOffset = -536
+	Local $iBytesRead = 0
+
+	; Hole Static Pointer auf die aktuelle Turmanzahl (kleine Türme) von Spieler 1
+	Local $bSuccess = _WinAPI_ReadProcessMemory($hProcess, $__pThreadBaseAddress+$hOffset, DLLStructGetPtr($tMode, 1), 4, $iBytesRead)
+	If Not $bSuccess Then SetError(3, 0, False)
+
+	ConsoleWrite("Basisadresse: " & DllStructGetData($tMode, 1) & @CRLF)
+	Local $pBaseAddress = DllStructGetData($tMode, 1)
+
+	; Offsets der Spieler berechnen
+	For $i = 1 To 8
+		Local $iPlayerOffset = ($i-1) * 4392
+		$__pPlayerBase[$i-1] = $pBaseAddress + $iBaseOffset + $iPlayerOffset
+		ConsoleWrite("Spieler " & $i & " Basisadresse: " & $__pPlayerBase[$i-1] & @CRLF)
+	Next
+
+	Return True
 EndFunc
 
 Func _MemoryModuleGetBaseAddress($iPID, $sModule)
     If Not ProcessExists($iPID) Then Return SetError(1, 0, 0)
-
     If Not IsString($sModule) Then Return SetError(2, 0, 0)
 
     Local   $PSAPI = DllOpen("psapi.dll")
@@ -236,4 +346,115 @@ Func _MemoryModuleGetBaseAddress($iPID, $sModule)
     DllClose($PSAPI)
     Return SetError(-1, 0, 0)
 
+EndFunc
+
+Func IsMatchRunning()
+	If GetTicks() > 0 Then Return True
+	Return False
+EndFunc
+
+Func GetPlayerData($iPlayer, $iOffset)
+	If $__pPlayerBase[$iPlayer-1] = Null Then Return SetError(1, 0, False)
+
+	Local $tMode = DllStructCreate("int")
+	Local $pMode = DllStructGetPtr($tMode, 1)
+
+	Local $iBytesRead = 0
+	Local $bSuccess = _WinAPI_ReadProcessMemory($__hProcess, $__pPlayerBase[$iPlayer-1] + $iOffset, $pMode, 4, $iBytesRead)
+	If Not $bSuccess Then Return SetError(2, _WinAPI_GetLastError() & "::" & _WinAPI_GetLastErrorMessage(), False)
+
+	;ConsoleWrite("Spieler " & $iPlayer & " Offset: " & $iOffset & ", Daten: " & DllStructGetData($tMode, 3) & @CRLF)
+	Return DllStructGetData($tMode, 1)
+EndFunc
+
+Func GetOffsetData()
+	_FileReadToArray($sFileIn, $__aOffsetList, $FRTA_COUNT, @TAB)
+EndFunc
+
+Func LogFileOpen()
+	$__iLineCounter = 0
+
+	Local $sNow = _Now()
+	$sNow = StringReplace($sNow, "/", "-")
+	$sNow = StringReplace($sNow, "\", "-")
+	$sNow = StringReplace($sNow, ".", "-")
+	$sNow = StringReplace($sNow, ":", "-")
+	$sNow = StringReplace($sNow, " ", "_")
+
+	Local $sFileName = StringReplace($sFileOut, "%NOW%", $sNow)
+
+	$__fHnd = FileOpen($sFileName, $FO_APPEND)
+	Local $sFirstLine = "Zeitstempel" & @TAB & "Zähler" & @TAB & "Spieler" & @TAB
+
+	For $i = 1 To $__aOffsetList[0][0]
+		$sFirstLine = $sFirstLine & $__aOffsetList[$i][2] & " - " & $__aOffsetList[$i][1] & @TAB
+	Next
+
+	FileWriteLine($__fHnd, $sFirstLine)
+EndFunc
+
+Func LogFileClose()
+	FileClose($__fHnd)
+	$__fHnd = Null
+EndFunc
+
+Func LogData()
+	If $__fHnd = Null Then Return False
+
+	Local $sNewLine
+	Local $iPlayerCount = GetPlayerCount()
+
+	For $iPlayer = 1 To $iPlayerCount ; Könnte buggy sein, falls ein Spieler aussteigt und sich dieser Wert ändert
+		If GUICtrlRead($__aCheckbox[$iPlayer-1]) = $GUI_CHECKED Then
+			$__iLineCounter = $__iLineCounter + 1
+			$sNewLine = ($bUseRealtime ? _Now() : GetElapsedGameTime()) & @TAB & $__iLineCounter & @TAB & $iPlayer & @TAB
+			For $i = 1 To $__aOffsetList[0][0]
+				$sNewLine = $sNewLine & GetPlayerData($iPlayer, $__aOffsetList[$i][0]) & @TAB
+			Next
+
+			; Letztes Trennzeichen entfernen
+			$sNewLine = StringTrimRight($sNewLine, 1)
+
+			;ConsoleWrite($sNewLine & @CRLF)
+			FileWriteLine($__fHnd, $sNewLine)
+		EndIf
+	Next
+EndFunc
+
+
+Func ToggleLogging()
+	If $__bLoggingEnabled Then
+		DisableLogging()
+	Else
+		EnableLogging()
+	EndIf
+EndFunc
+
+Func EnableLogging()
+	$__bLoggingEnabled = True
+	GUICtrlSetData($__Label4, "Aktiv")
+
+	For $i = 0 To 7
+		GUICtrlSetStyle($__aCheckbox[$i], BitOR($BS_AUTOCHECKBOX, $WS_DISABLED))
+	Next
+
+	;TrayTip("Siedler IV Statlogger", "Logging aktiviert", 10, $TIP_ICONASTERISK)
+EndFunc
+
+Func DisableLogging()
+	$__bLoggingEnabled = False
+	FileFlush($__fHnd)
+	GUICtrlSetData($__Label4, "Inaktiv")
+
+	For $i = 0 To 7
+		GUICtrlSetStyle($__aCheckbox[$i], $BS_AUTOCHECKBOX)
+	Next
+
+	;TrayTip("Siedler IV Statlogger", "Logging deaktiviert", 10, $TIP_ICONASTERISK)
+EndFunc
+
+Func CloseButton()
+	LogFileClose()
+	CloseProcess()
+	Exit 0
 EndFunc
